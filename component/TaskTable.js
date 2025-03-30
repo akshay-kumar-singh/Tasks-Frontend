@@ -11,6 +11,10 @@ import {
   getMonthName,
 } from "@/services/taskservice";
 import ShimmerUI from "./ShimmerUI";
+import EditTaskPopup from "@/component/popups/EditTaskPopup";
+import DeleteTaskPopup from "@/component/popups/DeleteTaskPopup";
+
+const OPERATION_PASSWORD = "Akki@123";
 
 export default function TaskTable({ selectedMonth }) {
   const [tasks, setTasks] = useState([]);
@@ -20,6 +24,12 @@ export default function TaskTable({ selectedMonth }) {
   const [editingTask, setEditingTask] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [password, setPassword] = useState("");
+  const [taskToDelete, setTaskToDelete] = useState(null);
+  const [passwordError, setPasswordError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
 
   const loadTasks = async () => {
     setIsLoading(true);
@@ -35,6 +45,13 @@ export default function TaskTable({ selectedMonth }) {
     }
   };
 
+  const showSuccessMessage = (message) => {
+    setSuccessMessage(message);
+    setTimeout(() => {
+      setSuccessMessage("");
+    }, 3000);
+  };
+
   const handleAddTask = async () => {
     if (newTask.trim() && newDate.trim()) {
       setIsLoading(true);
@@ -44,8 +61,10 @@ export default function TaskTable({ selectedMonth }) {
 
         if (editingTask) {
           await updateTask(editingTask._id, taskData);
+          showSuccessMessage("Task updated successfully!");
         } else {
           await createTask(taskData);
+          showSuccessMessage("Task added successfully!");
         }
 
         await loadTasks();
@@ -62,27 +81,52 @@ export default function TaskTable({ selectedMonth }) {
       }
     }
   };
-
-  const handleEditTask = (task) => {
+  const handleEditClick = (task) => {
     setEditingTask(task);
     setNewTask(task.task);
     setNewDate(new Date(task.date).toISOString().split("T")[0]);
-    setIsFormVisible(true);
+    setShowEditModal(true);
   };
 
-  const handleDeleteTask = async (id) => {
-    if (confirm("Are you sure you want to delete this task?")) {
+  const handleDeleteClick = (task) => {
+    setTaskToDelete(task);
+    setShowDeleteModal(true);
+  };
+
+  const verifyPassword = () => {
+    if (password === OPERATION_PASSWORD) {
+      setPasswordError("");
+      return true;
+    } else {
+      setPasswordError("Incorrect password");
+      return false;
+    }
+  };
+
+  const handleEditConfirm = () => {
+    if (verifyPassword()) {
+      setShowEditModal(false);
+      setPassword("");
+      setIsFormVisible(true);
+    }
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!verifyPassword()) return;
+
+    try {
       setIsLoading(true);
       setError(null);
-      try {
-        await deleteTask(id);
-        await loadTasks();
-      } catch (err) {
-        setError("Failed to delete task. Please try again.");
-        console.error("Error deleting task:", err);
-      } finally {
-        setIsLoading(false);
-      }
+      await deleteTask(taskToDelete._id);
+      showSuccessMessage("Task deleted successfully!");
+      await loadTasks();
+      setShowDeleteModal(false);
+      setPassword("");
+    } catch (err) {
+      setError("Failed to delete task. Please try again.");
+      console.error("Error deleting task:", err);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -93,6 +137,33 @@ export default function TaskTable({ selectedMonth }) {
 
   return (
     <div className="p-6 bg-white rounded-lg shadow-md">
+      <EditTaskPopup
+        isOpen={showEditModal}
+        onClose={() => {
+          setShowEditModal(false);
+          setPassword("");
+          setPasswordError("");
+        }}
+        onConfirm={handleEditConfirm}
+        password={password}
+        setPassword={setPassword}
+        passwordError={passwordError}
+      />
+
+      <DeleteTaskPopup
+        isOpen={showDeleteModal}
+        onClose={() => {
+          setShowDeleteModal(false);
+          setPassword("");
+          setPasswordError("");
+        }}
+        onConfirm={handleDeleteConfirm}
+        task={taskToDelete}
+        password={password}
+        setPassword={setPassword}
+        passwordError={passwordError}
+      />
+
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-bold text-gray-800">
           <span className="text-blue-600">{getMonthName(selectedMonth)}</span>{" "}
@@ -114,6 +185,28 @@ export default function TaskTable({ selectedMonth }) {
           <span>{isFormVisible ? "×" : "+"}</span>
         </button>
       </div>
+
+      {successMessage && (
+        <div className="fixed top-4 right-4 z-50">
+          <div className="bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg flex items-center animate-fade-in-up">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-6 w-6 mr-2"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M5 13l4 4L19 7"
+              />
+            </svg>
+            {successMessage}
+          </div>
+        </div>
+      )}
 
       {error && (
         <div className="mb-4 p-3 bg-red-100 text-red-700 rounded-lg">
@@ -197,7 +290,7 @@ export default function TaskTable({ selectedMonth }) {
                   <td className="p-3 text-center">
                     <div className="flex justify-center space-x-3">
                       <button
-                        onClick={() => handleEditTask(task)}
+                        onClick={() => handleEditClick(task)}
                         className="text-blue-600 hover:text-blue-800 transition-colors duration-150"
                         title="Edit Task"
                         disabled={isLoading}
@@ -205,7 +298,7 @@ export default function TaskTable({ selectedMonth }) {
                         <FaEdit size={18} />
                       </button>
                       <button
-                        onClick={() => handleDeleteTask(task._id)}
+                        onClick={() => handleDeleteClick(task)}
                         className="text-red-600 hover:text-red-800 transition-colors duration-150"
                         title="Delete Task"
                         disabled={isLoading}
